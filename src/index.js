@@ -3,41 +3,56 @@ let descriptionsRepo= {};
 
 let currentEnvironment = undefined;
 
-function ChoreographyInstance( identity, taskName, personality, context, user, spaceURI){
-    let __identity = identity;
+/*
+    ICP (Intelligent Choreography Protocol) is a protocol that defines how choreographies are executed.
+ */
+function TaskInstance( __identity, __taskName, __personality, __context, __user, __spaceURI){
 
-    if(undefined == __identity){
-        __identity = "agi://default:default";
+    if(__spaceURI == undefined){
+        __spaceURI = currentEnvironment.getSpaceURI();
     }
-    let __personality = personality;
-    let __task = taskName;
-    let __context = context;
-    let __user = user;
-    let __spaceURI = spaceURI;
 
-    //identity is a  string of the form "agi://choreographyName:uniqueIdentity"
+    if(__user == undefined){
+        __user = currentEnvironment.getCurrentUser();
+    }
+
+    //identity is a  string of the form "icp://spaceURI:choreographyName:uniqueIdentity"
     function parseIdentity(identity){
         let [protocol, rest] = identity.split("://");
-        // Split the rest into choreography name and unique identity
-        let [choreographyName, uniqueIdentity] = rest.split(":");
-        // Check if the protocol is "agi"
-        if (protocol !== "agi") {
-            throw new Error("Invalid protocol. Expected 'agi', got '" + protocol + "'");
+        let spaceURI = __spaceURI;
+        let choreographyName;
+        let choreographyIdentity;
+        let taskIdentity;
+
+        if(undefined === rest){
+            choreographyIdentity = currentEnvironment.generateUniqueIdentity()
+            choreographyName = protocol;
+            __identity = 'icp://${spaceURI}}:${choreographyName}:${choreographyIdentity}:${taskIdentity}';
+        } else {
+            // Split the rest into choreography name and unique identity
+            // Check if the protocol is "icp"
+            if (protocol !== "icp") {
+                throw new Error("Invalid protocol. Expected 'icp', got '" + protocol + "'");
+            }
+           [spaceURI, choreographyName, choreographyIdentity, taskIdentity] = rest.split(":");
         }
-        // Return the choreography name and unique identity
-        return { choreographyName, uniqueIdentity };
+        return { spaceURI, choreographyName, uniqueIdentity: choreographyIdentity };
     }
 
-    let { __choreographyName, __uniqueIdentity } = parseIdentity(identity);
+    let { _spaceURI, _choreographyName, _uniqueIdentity, _taskIdentity } = parseIdentity(__identity);
 
     this.run = function(){
-        let choreography = descriptionsRepo[__identity];
-        let currentTask = choreography[__choreographyName];
+        let choreography = descriptionsRepo[__choreographyName];
+        let currentTask = choreography[__taskName];
+        if(typeof currentTask !== "function"){
+            throw new Error("Task name " + __taskName + " not found in choreography " + __choreographyName);
+        }
         let taskFunc = currentTask.bind(this);
         try{
             taskFunc(__context, __personality, __user, __spaceURI);
+            currentEnvironment.taskExecutionSucceeded(__identity);
         } catch(err){
-            console.log("Unknown error" + err);
+            currentEnvironment.taskExecutionFailed(__identity, err);
         }
     }
 }
@@ -50,8 +65,9 @@ exports = {
         descriptionsRepo[name] = choreographyDescription;
     },
 
-    start: function(name, context, personality, user, system){
-        return new ChoreographyInstance(undefined, name, "start", context, personality, user, system).run();
+    //__identity, __taskName, __personality, __context, __user, __spaceURI
+    getTaskInstance: function(identity, context, personality, user, system){
+        return new TaskInstance(name, "start", context, personality, user, system);
     },
 
 }
